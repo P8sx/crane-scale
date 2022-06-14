@@ -8,7 +8,7 @@ BLECharacteristic *pCalibrationChar;
 BLECharacteristic *pTareChar;
 
 BLECharacteristic *pBatteryChar;
-BLECharacteristic *pDisplaySettingsChar;
+BLECharacteristic *pDisplayBrightnessChar;
 extern TaskHandle_t main_task;
 
 void BLESetup(){
@@ -62,22 +62,22 @@ void BLESetup(){
   pBatteryChar->addDescriptor(new BLE2902());
 
 
-  pDisplaySettingsChar = pService->createCharacteristic(
-    DISPLAY_SETTINGS_CUUID,
+  pDisplayBrightnessChar = pService->createCharacteristic(
+    BRIGHTNESS_CUUID,
     BLECharacteristic::PROPERTY_READ |
     BLECharacteristic::PROPERTY_WRITE
   );
   uint8_t brightness = displayBrightness(0);
-  pDisplaySettingsChar->setValue((uint8_t *)&brightness, sizeof(uint8_t));
-  pDisplaySettingsChar->setCallbacks(new DisplayCallbacks);
-  pDisplaySettingsChar->addDescriptor(new BLE2902());
+  pDisplayBrightnessChar->setValue((uint8_t *)&brightness, sizeof(uint8_t));
+  pDisplayBrightnessChar->setCallbacks(new DisplayCallbacks);
+  pDisplayBrightnessChar->addDescriptor(new BLE2902());
 
 
 
   pService->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
   pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
+  pAdvertising->setScanResponse(false);
   pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
 }

@@ -23,7 +23,7 @@ uint8_t displayBrightness(uint8_t brightness = 0){
 void displaySetup()
 {
     matrix.begin();
-    matrix.setBrightness(50);
+    matrix.setBrightness(20);
 
     matrix.fill(matrix.Color(255, 0, 0));
     matrix.show();
@@ -69,10 +69,10 @@ void displayValue(uint16_t number, int16_t x, int16_t y, uint16_t color){
 
 void displayWeight(uint16_t weight)
 {
-    uint16_t color;
+    uint16_t color = matrix.Color(255,0,0);
     switch(weight){
       case 0 ... 600:
-        color = matrix.Color(0,128,255);
+        color = matrix.Color(50,255,0);
       break;
       case 601 ... 1200:
         color = matrix.Color(255,165,0);

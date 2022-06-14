@@ -15,7 +15,7 @@
 #define CAL_CUUID                   "68da8e08-d882-11ec-9d64-0242ac120002"
 #define TARE_CUUID                  "68da8eee-d882-11ec-9d64-0242ac120002"
 #define BATTERY_CUUID               "68da8fd4-d882-11ec-9d64-0242ac120002"
-#define DISPLAY_SETTINGS_CUUID      "68da90ba-d882-11ec-9d64-0242ac120002"
+#define BRIGHTNESS_CUUID      "68da90ba-d882-11ec-9d64-0242ac120002"
 
 
 // 68da91a0-d882-11ec-9d64-0242ac120002

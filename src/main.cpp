@@ -69,7 +69,6 @@ void dataTask(void * parameter){
         LCTare();
       }      
     }
-
     weight = LCWeight();
     xQueueSend(weight_queue, &weight, 0);
     
@@ -85,7 +84,6 @@ void mainTask(void * parameter){
   uint8_t vbat = 0;
   uint32_t weight = 0;
   uint32_t notification;
-
   displayBattery(VBAT());
   vTaskDelay(2000/portTICK_PERIOD_MS);  
 
