@@ -9,7 +9,7 @@ BLECharacteristic *pTareChar;
 
 BLECharacteristic *pBatteryChar;
 BLECharacteristic *pDisplayBrightnessChar;
-extern TaskHandle_t main_task;
+extern TaskHandle_t display_task;
 
 void BLESetup(){
   BLEDevice::init("P8 - Waga");
@@ -19,7 +19,7 @@ void BLESetup(){
   
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new ServerCallbacks());
-  pService = pServer->createService(SERVICE_UUID);
+  pService = pServer->createService(SERVICE_CUUID);
 
 
   pWeightChar = pService->createCharacteristic(
@@ -67,8 +67,8 @@ void BLESetup(){
     BLECharacteristic::PROPERTY_READ |
     BLECharacteristic::PROPERTY_WRITE
   );
-  uint8_t brightness = displayBrightness(0);
-  pDisplayBrightnessChar->setValue((uint8_t *)&brightness, sizeof(uint8_t));
+
+  pDisplayBrightnessChar->setValue(&deviceConfig.displayBrightness, sizeof(uint8_t));
   pDisplayBrightnessChar->setCallbacks(new DisplayCallbacks);
   pDisplayBrightnessChar->addDescriptor(new BLE2902());
 
@@ -76,7 +76,7 @@ void BLESetup(){
 
   pService->start();
   BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->addServiceUUID(SERVICE_CUUID);
   pAdvertising->setScanResponse(false);
   pAdvertising->setMinPreferred(0x0);
   BLEDevice::startAdvertising();
@@ -93,16 +93,10 @@ void ServerCallbacks::onDisconnect(BLEServer* pServer){
 
 
 void CalibrationCallbacks::onWrite(BLECharacteristic* pCharacteristic){
-  std::string rxValue = pCharacteristic->getValue();
-  if(rxValue == "begin"){
-    Serial.println("Begin of calibration");
-    pCharacteristic->setValue("begin");
-    LCBeginCal();
-  }
-  else{
-    float result = LCCal(atof(rxValue.c_str()));
-    pCharacteristic->setValue((uint8_t *)&result, sizeof(float));
-  }
+  std::string rxValue = pCharacteristic->getValue(); 
+  LCCal(atof(rxValue.c_str()));
+  // pCharacteristic->setValue((uint8_t *)&result, sizeof(float));
+  
 }
 void CalibrationCallbacks::onRead(BLECharacteristic* pCharacteristic){
    
@@ -111,7 +105,7 @@ void CalibrationCallbacks::onRead(BLECharacteristic* pCharacteristic){
 
 
 void TareCallbacks::onWrite(BLECharacteristic* pCharacteristic){
-  xTaskNotifyFromISR(main_task, TARE_BIT, eSetBits, NULL);
+  xTaskNotifyFromISR(display_task, NOTIFICATION_TARE_BIT, eSetBits, NULL);
 }
 void TareCallbacks::onRead(BLECharacteristic* pCharacteristic){
    
@@ -121,7 +115,7 @@ void TareCallbacks::onRead(BLECharacteristic* pCharacteristic){
 
 void DisplayCallbacks::onWrite(BLECharacteristic* pCharacteristic){
   uint8_t brightness = *(uint8_t *)pCharacteristic->getValue().c_str();
-  displayBrightness(brightness);
+  setDisplayBrightness(brightness);
   pCharacteristic->setValue((uint8_t *)&brightness, sizeof(uint8_t));
 }
 void DisplayCallbacks::onRead(BLECharacteristic* pCharacteristic){

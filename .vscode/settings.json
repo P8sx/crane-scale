@@ -40,7 +40,10 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "cinttypes": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "optional": "cpp",
+        "atomic": "cpp",
+        "string_view": "cpp"
     },
     "cSpell.words": [
         "atten",

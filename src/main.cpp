@@ -1,18 +1,21 @@
 #include <Arduino.h>
-#include "Preferences.h"
-#include "load_cell.h"
-#include "display.h"
-#include "ble.h"
 #include <driver/adc.h>
-#include "Preferences.h"
-#include "config.h"
 
-Preferences preferences;
-portMUX_TYPE mutex = portMUX_INITIALIZER_UNLOCKED;
+
+#include "Config/config.h"
+
+
+
+#include "LoadCell/load_cell.h"
+#include "Display/display.h"
+#include "BLE/ble.h"
+
+
+DeviceConfig deviceConfig;
+
 TaskHandle_t data_task = NULL;
-TaskHandle_t main_task = NULL;
-
-TimerHandle_t tare_timer = NULL;
+TaskHandle_t display_task = NULL;
+TaskHandle_t input_task = NULL;
 
 QueueHandle_t vbat_queue = NULL;
 QueueHandle_t weight_queue = NULL;
@@ -20,7 +23,6 @@ QueueHandle_t weight_queue = NULL;
 extern BLECharacteristic *pWeightChar;
 extern BLECharacteristic *pBatteryChar;
 
-bool tare_flag = false;
 
 uint8_t VBAT()
 {
@@ -48,26 +50,21 @@ uint8_t VBAT()
         return 100;
 }
 
-void tareTimerCallback(TimerHandle_t xTimer){
-  static uint8_t blink_count = 0;
-  tare_flag = !tare_flag;
 
-  if(++blink_count > 3){
-    blink_count = 0;
-    tare_flag = false;
-    xTimerStop(tare_timer, 0);
-  }
-}
 
 void dataTask(void * parameter){
   uint8_t vbat = 0;
-  uint32_t weight = 0;
-  uint32_t notification; 
+  int32_t weight = 0;
+  uint32_t taskNotificationFlag_u32; 
+
   for(;;){
-    if(xTaskNotifyWait(pdFALSE, ULONG_MAX, &notification, 0) == pdPASS){
-      if((notification & TARE_BIT) != 0){
-        LCTare();
-      }      
+    if(xTaskNotifyWait(pdFALSE, ULONG_MAX, &taskNotificationFlag_u32, 0) == pdPASS){
+      if((taskNotificationFlag_u32 & NOTIFICATION_TARE_BIT) == NOTIFICATION_TARE_BIT){
+        LCOffset();
+      }
+      if((taskNotificationFlag_u32 & NOTIFICATION_ZERO_BIT) == NOTIFICATION_ZERO_BIT){
+        LCZero(); 
+        }
     }
     weight = LCWeight();
     xQueueSend(weight_queue, &weight, 0);
@@ -80,52 +77,109 @@ void dataTask(void * parameter){
 }
 
 
-void mainTask(void * parameter){
+void displayTask(void * parameter){
   uint8_t vbat = 0;
   uint32_t weight = 0;
-  uint32_t notification;
+  uint32_t taskNotificationFlag_u32;
+  uint8_t timeLeft = 0;
   displayBattery(VBAT());
   vTaskDelay(2000/portTICK_PERIOD_MS);  
 
   for(;;){
 
     if(xQueueReceive(weight_queue, &weight, 0) == pdTRUE){
-      displayWeight(weight);
+      /* Update BLE characteristic */
       pWeightChar->setValue((uint8_t *)&weight, sizeof(weight));
       pWeightChar->notify();
+
+      displayWeight(weight);
     }
 
     if(xQueueReceive(vbat_queue, &vbat, 0) == pdTRUE){
-      displayBatteryStatusBar(true, vbat);
+      /* Update BLE characteristic */
       pBatteryChar->setValue((uint8_t *)&vbat, sizeof(vbat));
       pBatteryChar->notify();
+
+      #ifdef STATUS_LED
+        displayBatteryStatusLED(true, vbat);
+      #endif
     } 
 
-    displayBLEStatusBar(BLEConnected());
+    #ifdef STATUS_LED
+      displayBLEStatusLED(BLEConnected());
+      if(xTaskNotifyWait(pdFALSE, ULONG_MAX, &taskNotificationFlag_u32, 0) == pdPASS){
+        if((taskNotificationFlag_u32 & NOTIFICATION_TARE_DISPLAY_BIT) == NOTIFICATION_TARE_DISPLAY_BIT){
+          displayTareZeroStatusLED(true);
+        }
+        else if((taskNotificationFlag_u32 & NOTIFICATION_ZERO_DISPLAY_BIT) == NOTIFICATION_ZERO_DISPLAY_BIT){
+          displayTareZeroStatusLED(true, true);
+        }
+        else if((taskNotificationFlag_u32 & NOTIFICATION_OFF_DISPLAY_BIT) == NOTIFICATION_OFF_DISPLAY_BIT){
+          displayTareZeroStatusLED(false);
+        }
+      }
 
-    displayTareStatusBar(tare_flag);
+    #endif
 
 
-    if(digitalRead(TARE_PIN) == LOW || (xTaskNotifyWait(pdFALSE, ULONG_MAX, &notification, 0) == pdPASS && (notification & TARE_BIT) != 0)){
-      xTimerStart(tare_timer, 0);
-      xTaskNotify(data_task, TARE_BIT, eSetBits);
-    }
-
-    if(digitalRead(BAT_PIN) == LOW){
+    /* Display battery status on main screen */
+    if(xTaskNotifyWait(pdFALSE, ULONG_MAX, &taskNotificationFlag_u32, 0) == pdPASS && (taskNotificationFlag_u32 & NOTIFICATION_BATTERY_DISPLAY_BIT) == NOTIFICATION_BATTERY_DISPLAY_BIT){
       displayBattery(vbat);
-      vTaskDelay(3000/portTICK_PERIOD_MS);
+      vTaskDelay(BATTERY_STATUS_SCREEN_TIME/portTICK_PERIOD_MS);
     }
+
+    vTaskDelay(200/portTICK_PERIOD_MS);
+  }
+}
+
+void inputTask(void * parameter){
+  uint8_t tareButtonHoldTime = 0;
+  uint8_t timeLeft = 0;
+  for(;;){
+    
+    /* Tare button handling */
+    while(digitalRead(TARE_PIN) == LOW){
+      tareButtonHoldTime++;
+      vTaskDelay(50/portTICK_PERIOD_MS);
+      if(tareButtonHoldTime == 1) xTaskNotify(display_task, NOTIFICATION_TARE_DISPLAY_BIT, eSetBits);
+      else if(tareButtonHoldTime >= 60) xTaskNotify(display_task, NOTIFICATION_ZERO_DISPLAY_BIT, eSetBits);
+    }
+
+    if(tareButtonHoldTime >= 1 && tareButtonHoldTime < 60){
+      xTaskNotify(data_task, NOTIFICATION_TARE_BIT, eSetBits);
+      timeLeft = 40;
+    }
+    else if(tareButtonHoldTime >= 60){
+      xTaskNotify(data_task, NOTIFICATION_ZERO_BIT, eSetBits);
+      timeLeft = 40;
+    }
+    tareButtonHoldTime = 0;
+    if(timeLeft >= 1) timeLeft--;
+    else if (timeLeft == 0) xTaskNotify(display_task, NOTIFICATION_OFF_DISPLAY_BIT, eSetBits);
+    
+    /* Display button handling */
+    if(digitalRead(BAT_PIN) == LOW){
+      xTaskNotify(display_task, NOTIFICATION_BATTERY_DISPLAY_BIT, eSetBits);
+      vTaskDelay(2000/portTICK_PERIOD_MS);
+    }
+
     vTaskDelay(50/portTICK_PERIOD_MS);
   }
 }
 
 void setup() {
+  Serial.begin(9600);
+
+
+  Serial.println("Booting");
+  loadDeviceConfig();
+
   adc1_config_width(ADC_WIDTH_12Bit);
   adc1_config_channel_atten(ADC1_CHANNEL_5, ADC_ATTEN_11db);
   pinMode(TARE_PIN,INPUT_PULLUP);
   pinMode(BAT_PIN,INPUT_PULLUP);
 
-  Serial.begin(9600);
+
   displaySetup();
   BLESetup();
   LCSetup();
@@ -133,12 +187,13 @@ void setup() {
   while(digitalRead(BAT_PIN) == LOW && digitalRead(TARE_PIN) == LOW){
     delay(1000); Serial.println("Recovery mode");
   }
+
   vbat_queue = xQueueCreate(2, sizeof(uint8_t));
-  weight_queue = xQueueCreate(2, sizeof(uint32_t));
+  weight_queue = xQueueCreate(2, sizeof(int32_t));
 
   xTaskCreatePinnedToCore(dataTask, "DATA_TASK", 10000, NULL, 1, &data_task, 0);
-  xTaskCreatePinnedToCore(mainTask, "MAIN_TASK", 10000, NULL, 1, &main_task, 1);
-  tare_timer = xTimerCreate("TARE_TIMER", pdMS_TO_TICKS(400), pdTRUE, NULL, tareTimerCallback);
+  xTaskCreatePinnedToCore(inputTask, "INPUT_TASK",10000, NULL, 1, &input_task, 1);
+  xTaskCreatePinnedToCore(displayTask, "MAIN_TASK", 10000, NULL, 1, &display_task, 1);
 }
 
 

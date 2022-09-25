@@ -1,11 +1,15 @@
+#ifndef BLE_H
+#define BLE_H
+
 #include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <BLE2902.h>
-#include "config.h"
-#include "load_cell.h"
-#include "display.h"
+
+#include "Config/config.h"
+#include "LoadCell/load_cell.h"
+#include "Display/display.h"
 
 
 void BLESetup();
@@ -28,6 +32,4 @@ class DisplayCallbacks: public BLECharacteristicCallbacks{
     void onRead(BLECharacteristic* pCharacteristic);
 };
 
-
-
-
+#endif
